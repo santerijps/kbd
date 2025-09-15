@@ -1,7 +1,14 @@
 const overlay = createOverlay("kbd-overlay");
 document.body.appendChild(overlay.element);
 
+const Action = {
+    DEFAULT: "DEFAULT",
+    OPEN_IN_NEW_TAB: "OPEN_IN_NEW_TAB",
+    MOUSE_OVER: "MOUSE_OVER",
+};
+
 const state = {
+    actions: ShortTermMemoryArray(),
     /** @type {Map<string, {element: HTMLElement, hint: HTMLElement}>} */
     elementMap: new Map(),
     input: "",
@@ -9,10 +16,11 @@ const state = {
     hints: [],
     modKey: "AltGraph",
     modKeyIsDown: false,
-    openInNewTab: false,
+    targetElements: ShortTermMemoryArray(),
 };
 
 document.addEventListener("keydown", (event) => {
+    console.log(event);
 
     if (overlay.isVisible()) {
         return;
@@ -20,38 +28,49 @@ document.addEventListener("keydown", (event) => {
 
     if (event.key === state.modKey) {
         state.modKeyIsDown = true;
+        return;
     }
-    else if (!state.modKeyIsDown) {
+
+    if (!state.modKeyIsDown) {
         return;
     }
 
     if (event.key === "q") {
-        if (document.activeElement instanceof HTMLElement) {
-            document.activeElement.blur();
-        }
+        quit();
         return;
     }
 
-    let selectors = "";
+    if (event.key === "u") {
+        undo();
+        return;
+    }
+
+    let action = Action.DEFAULT;
+    let selectors = null;
 
     if (event.key === "f") {
         selectors = `a[href], button, [role="button"], [role="menuitem"], [role="submit"], [type="checkbox"], [type="radio"]`;
     }
     else if (event.key === "F") {
-        selectors = `a[href]`;
-        state.openInNewTab = true;
+        action = Action.OPEN_IN_NEW_TAB;
+        selectors = `a[href], audio[src], img[src], video[src]`;
     }
     else if (event.key === "i") {
         selectors = `input[type="text"], textarea`;
     }
     else if (event.key === "µ") {
-        selectors = `img, video`;
+        selectors = `audio, img, video`;
     }
-    else {
-        state.elementMap.clear();
-        state.hints = [];
+    else if (event.key === "h") {
+        action = Action.MOUSE_OVER;
+        selectors = `a[href], button, [role="button"], [role="menuitem"], [role="submit"], [type="checkbox"], [type="radio"]`;
+    }
+
+    if (selectors === null) {
         return;
     }
+
+    state.actions.add(action);
 
     const { elementMap, hints } = generateHints(selectors);
     state.elementMap = elementMap;
@@ -79,7 +98,6 @@ overlay.element.addEventListener("keydown", (event) => {
 
     if (event.key === "Escape") {
         state.input = "";
-        state.openInNewTab = false;
         overlay.hide();
         return;
     }
@@ -90,7 +108,6 @@ overlay.element.addEventListener("keydown", (event) => {
 
         if (pairs.length === 0) {
             state.input = "";
-            state.openInNewTab = false;
             overlay.hide();
             return;
         }
@@ -106,27 +123,31 @@ overlay.element.addEventListener("keydown", (event) => {
         const item = state.elementMap.get(state.input.toUpperCase());
         if (item === undefined) { throw Error("unreachable"); }
         const { element: el } = item;
+        const action = state.actions.lst();
+        state.targetElements.add(el);
 
-
-        if (state.openInNewTab) {
+        if (action === Action.DEFAULT) {
+            el.click();
+            if (el.tagName === "INPUT" && el.type === "text" || el.tagName === "TEXTAREA") {
+                el.focus();
+            }
+        }
+        else if (action === Action.OPEN_IN_NEW_TAB) {
             open(
-                el.tagName === "IMG" || el.tagName === "VIDEO"
+                el.tagName === "AUDIO" || el.tagName === "IMG" || el.tagName === "VIDEO"
                     ? el.src
                     : el.href,
                 "_blank",
                 "noreferer, noopener",
             );
         }
-        else if (el.tagName === "INPUT" && el.type === "text" || el.tagName === "TEXTAREA") {
-            el.click();
-            el.focus();
-        }
-        else {
-            el.click();
+        else if (action === Action.MOUSE_OVER) {
+            el.dispatchEvent(new Event("mouseover", { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new Event("mouseenter", { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new Event("mousemove", { bubbles: true, cancelable: true }));
         }
 
         state.input = "";
-        state.openInNewTab = false;
         overlay.hide();
     }
 
@@ -300,6 +321,43 @@ function* HintIdGenerator({ alphabet = 'ASDFCE' } = {}) {
             throw Error("ID limit reached!");
         }
     }
+}
 
-    return "UNREACHABLE";
+function ShortTermMemoryArray(maxLength = 10) {
+    const array = [];
+    return {
+        add: (item) => {
+            if (array.length === maxLength) {
+                array.shift();
+            }
+            array.push(item);
+        },
+        pop: () => array.pop(),
+        len: () => array.length,
+        lst: () => array.length === 0 ? undefined : array[array.length - 1],
+    };
+}
+
+function quit() {
+    state.elementMap.clear();
+    state.hints = [];
+
+    while (state.actions.len() > 0) {
+        undo();
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+}
+
+function undo() {
+    const action = state.actions.pop();
+    const targetElement = state.targetElements.pop();
+    if (action === undefined || targetElement === undefined) { return; }
+
+    if (action === Action.MOUSE_OVER) {
+        targetElement.dispatchEvent(new Event("mouseout", { bubbles: true, cancelable: true }));
+        targetElement.dispatchEvent(new Event("mouseleave", { bubbles: true, cancelable: true }));
+    }
 }
