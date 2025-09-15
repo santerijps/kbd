@@ -20,9 +20,9 @@ const state = {
 };
 
 document.addEventListener("keydown", (event) => {
-    console.log(event);
 
     if (overlay.isVisible()) {
+        handleOverlayKeyDown(event);
         return;
     }
 
@@ -45,6 +45,23 @@ document.addEventListener("keydown", (event) => {
         return;
     }
 
+    handleActionKeyDown(event);
+
+}, true);
+
+document.addEventListener("keyup", (event) => {
+
+    if (event.key === state.modKey) {
+        state.modKeyIsDown = false;
+        return;
+    }
+
+}, true);
+
+/**
+ * @param {KeyboardEvent} event
+ */
+function handleActionKeyDown(event) {
     let action = Action.DEFAULT;
     let selectors = null;
 
@@ -78,80 +95,69 @@ document.addEventListener("keydown", (event) => {
 
     overlay.setChildren(state.hints);
     overlay.show();
+}
 
-}, true);
-
-document.addEventListener("keyup", (event) => {
-
-    if (event.key === state.modKey) {
-        state.modKeyIsDown = false;
-        return;
-    }
-
-}, true);
-
-overlay.element.addEventListener("keydown", (event) => {
-
-    if (!overlay.isVisible()) {
-        return;
-    }
-
+/**
+ * @param {KeyboardEvent} event
+ */
+function handleOverlayKeyDown(event) {
     if (event.key === "Escape") {
         state.input = "";
         overlay.hide();
         return;
     }
 
-    if (event.key.length === 1) {
-        state.input += event.key;
-        const pairs = Array.from(state.elementMap.entries()).filter(([key]) => key.toLowerCase().startsWith(state.input));
-
-        if (pairs.length === 0) {
-            state.input = "";
-            overlay.hide();
-            return;
-        }
-
-        state.elementMap = new Map(pairs);
-        state.hints = pairs.map((pair) => pair[1].hint);
-        overlay.setChildren(state.hints);
-
-        if (state.hints.length !== 1) {
-            return;
-        }
-
-        const item = state.elementMap.get(state.input.toUpperCase());
-        if (item === undefined) { throw Error("unreachable"); }
-        const { element: el } = item;
-        const action = state.actions.lst();
-        state.targetElements.add(el);
-
-        if (action === Action.DEFAULT) {
-            el.click();
-            if (el.tagName === "INPUT" && el.type === "text" || el.tagName === "TEXTAREA") {
-                el.focus();
-            }
-        }
-        else if (action === Action.OPEN_IN_NEW_TAB) {
-            open(
-                el.tagName === "AUDIO" || el.tagName === "IMG" || el.tagName === "VIDEO"
-                    ? el.src
-                    : el.href,
-                "_blank",
-                "noreferer, noopener",
-            );
-        }
-        else if (action === Action.MOUSE_OVER) {
-            el.dispatchEvent(new Event("mouseover", { bubbles: true, cancelable: true }));
-            el.dispatchEvent(new Event("mouseenter", { bubbles: true, cancelable: true }));
-            el.dispatchEvent(new Event("mousemove", { bubbles: true, cancelable: true }));
-        }
-
-        state.input = "";
-        overlay.hide();
+    if (event.key.length !== 1) {
+        return;
     }
 
-}, true);
+    state.input += event.key;
+    const pairs = Array.from(state.elementMap.entries()).filter(([key]) => key.toLowerCase().startsWith(state.input));
+
+    if (pairs.length === 0) {
+        state.input = "";
+        overlay.hide();
+        return;
+    }
+
+    state.elementMap = new Map(pairs);
+    state.hints = pairs.map((pair) => pair[1].hint);
+    overlay.setChildren(state.hints);
+
+    if (state.hints.length !== 1) {
+        return;
+    }
+
+    const item = state.elementMap.get(state.input.toUpperCase());
+    if (item === undefined) { throw Error("unreachable"); }
+    const { element: el } = item;
+    const action = state.actions.lst();
+    state.targetElements.add(el);
+
+    if (action === Action.DEFAULT) {
+        el.click();
+        if (el.tagName === "INPUT" && el.type === "text" || el.tagName === "TEXTAREA") {
+            el.focus();
+        }
+    }
+    else if (action === Action.OPEN_IN_NEW_TAB) {
+        open(
+            el.tagName === "AUDIO" || el.tagName === "IMG" || el.tagName === "VIDEO"
+                ? el.src
+                : el.href,
+            "_blank",
+            "noreferer, noopener",
+        );
+    }
+    else if (action === Action.MOUSE_OVER) {
+        el.dispatchEvent(new Event("mouseover", { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event("mouseenter", { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event("mousemove", { bubbles: true, cancelable: true }));
+    }
+
+    state.input = "";
+    overlay.hide();
+}
 
 /**
  * @param {string} selectors
